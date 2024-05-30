@@ -1,127 +1,278 @@
 const express = require("express");
 const axios = require("axios");
+const bodyParser = require("body-parser");
 const db = require("./db/init");
+const { Sequelize } = require("sequelize");
 require("dotenv").config();
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const sequelize = new Sequelize(
+  "postgres://default:7XCd2GfbWSgD@ep-rough-cloud-a79cocee-pooler.ap-southeast-2.aws.neon.tech:5432/verceldb?sslmode=require"
+);
 
+const app = express();
+const PORT = process.env.PORT;
+var ACCESS_TOKEN, REFRESH_TOKEN, TENANT_ID;
+const clientID = "77AD125B449D41429D6C6FB281770221";
+const clientSecret = "7xSgCmgr8dKtrk88Lz58fsyppPl3eto0ojgPhuzOmR6_EsFB";
+const redirectURL = "http://localhost:3000/callback";
 // Function to parse Xero timestamp format into a JavaScript Date object
 function parseXeroTimestamp(xeroTimestamp) {
   // Extract the timestamp value from the Xero format
   const timestamp = parseInt(
     xeroTimestamp.replace("/Date(", "").replace(")/", "")
   );
-  // Convert milliseconds since Unix epoch to JavaScript Date object
-  // console.log("Date: " + new Date(timestamp) )
+
   return new Date(timestamp);
 }
-app.get("/fetch-data", async (req, res) => {
+app.get("/populateData", async (req, res) => {
   try {
-    console.log("TOKEN:", process.env.XERO_ACCESS_TOKEN);
-    // const [accountsResponse, bankTransactionsResponse] = await Promise.all([
-    //   // axios.get(`${xeroApiBase}/assets`, { headers: { Authorization: `Bearer ${process.env.XERO_ACCESS_TOKEN}` } }),
-    //   axios.get(`https://api.xero.com/api.xro/2.0/Accounts`, {
-    //     headers: { Authorization: `Bearer ${process.env.XERO_ACCESS_TOKEN}`}
-    //   }),
-    //   axios.get(`https://api.xero.com/api.xro/2.0/BankTransactions`, {
-    //     headers: { Authorization: `Bearer ${process.env.XERO_ACCESS_TOKEN}` },
-    //   }),
-    // ]);
+    console.log("ACCESS_TOKEN: ", ACCESS_TOKEN)
+    console.log("TENANT_ID: ", TENANT_ID)
+    await sequelize.authenticate();
+    const [assetsResponse, accountsResponse, bankTransactionsResponse] =
+      await Promise.all([
+        axios.get(`https://api.xero.com/assets.xro/1.0/Assets`, {
+          headers: { Authorization: `Bearer ${ACCESS_TOKEN}`,
+                      "Xero-Tenant-Id": TENANT_ID },
+          params: { status: "DRAFT", pageSize: 100 }, //could be Draft | Registered | Disposed
+        }),
+        axios.get(`https://api.xero.com/api.xro/2.0/Accounts`, {
+          headers: { Authorization: `Bearer ${ACCESS_TOKEN}`,
+                     "Xero-Tenant-Id": TENANT_ID},
+        }),
+        axios.get(`https://api.xero.com/api.xro/2.0/BankTransactions`, {
+          headers: { Authorization: `Bearer ${ACCESS_TOKEN}`, 
+                    "Xero-Tenant-Id": TENANT_ID },
+        }),
+      ]);
+    await sequelize.authenticate();
 
-    // // const assets = assetsResponse.data.Assets;
-    // const accounts = accountsResponse.data.Accounts;
-    // const bankTransactions = bankTransactionsResponse.data.BankTransactions;
+    const assets = assetsResponse.data.items;
+    const accounts = accountsResponse.data.Accounts;
+    const bankTransactions = bankTransactionsResponse.data.BankTransactions;
 
-    // // Insert data into PostgreSQL
+    for (const item of assets) {
+      await db.Assets.create({
+        entity_id: item.assetId,
+        asset_id: item.assetId,
+        name: item.assetName,
+        asset_number: item.assetNumber,
+        purchase_date: item.purchaseDate,
+        purchase_price: item.purchasePrice,
+        disposal_price: item.disposalPrice,
+        asset_status: item.assetStatus,
+        depreciation_calculation_method: item.bookDepreciationSetting
+          ? item.bookDepreciationSetting.depreciationCalculationMethod
+          : null,
+        depreciation_method: item.bookDepreciationSetting
+          ? item.bookDepreciationSetting.depreciationMethod
+          : null,
+        average_method: item.bookDepreciationSetting
+          ? item.bookDepreciationSetting.averagingMethod
+          : null,
+        depreciation_rate: item.bookDepreciationSetting
+          ? item.bookDepreciationSetting.depreciationRate
+          : null,
+        effective_life_years: item.bookDepreciationSetting
+          ? item.bookDepreciationSetting.effectiveLifeYears
+          : null,
+        current_capital_gain: item.bookDepreciationDetail
+          ? item.bookDepreciationDetail.currentCapitalGain
+          : null,
+        current_capital_lost: item.bookDepreciationDetail
+          ? item.bookDepreciationDetail.currentCapitalLoss
+          : null,
+        depreciation_start_date: item.bookDepreciationDetail
+          ? item.bookDepreciationDetail.depreciationStartDate
+          : null,
+        cost_limits: item.bookDepreciationSetting
+          ? item.bookDepreciationSetting.costLimit
+          : null,
+        asset_residual_value: item.bookDepreciationSetting
+          ? item.bookDepreciationSetting.residualValue
+          : null,
+        prior_accum_depreciation_amount: item.bookDepreciationDetail
+          ? item.bookDepreciationDetail.priorAccumDepreciationAmount
+          : null,
+        current_accum_depreciation_amount: item.bookDepreciationDetail
+          ? item.bookDepreciationDetail.currentAccumDepreciationAmount
+          : null,
+      });
+    }
 
-    // // There is no entity_ID atm, so I will pretend account_id is entity_id
-    //     for (const account of accounts) {
-    //       await db.query(
-    //           `INSERT INTO chart_of_accounts (
-    //               account_id,
-    //               entity_id,
-    //               account_type,
-    //               account_name,
-    //               account_code,
-    //               account_description,
-    //               tax_type,
-    //               account_status
-    //           ) VALUES (
-    //               $1, $2, $3, $4, $5, $6, $7, $8
-    //           );`,
-    //           [
-    //               account.AccountID,
-    //               account.AccountID,
-    //               account.Type,
-    //               account.Name,
-    //               account.Code,
-    //               account.Description ? account.Description: null,
-    //               account.TaxType,
-    //               account.Status
-    //           ]
-    //       );
-    //   }
+    for (const account of accounts) {
+      await db.ChartOfAccounts.create({
+        account_id: account.AccountID,
+        entity_id: account.AccountID,
+        account_type: account.Type,
+        account_name: account.Name,
+        account_code: account.Code,
+        account_description: account.Description ? account.Description : null,
+        tax_type: account.TaxType,
+        account_status: account.Status,
+      });
+    }
 
-    // //   console.log(bankTransactions[0].Contact.ContactID)
-    // //   There is no entity_ID so I assume transaction is entity_id
-    // for( const transaction of bankTransactions){
-    //   await db.query(
-    //     `INSERT INTO bank_transactions (
-    //         entity_id,
-    //         transaction_id,
-    //         transaction_status,
-    //         contact_id,
-    //         contact_name,
-    //         transaction_date,
-    //         bank_account_id,
-    //         bank_account_code,
-    //         bank_account_name,
-    //         transaction_currency,
-    //         currency_rate,
-    //         transaction_type,
-    //         item_ID,
-    //         item_description,
-    //         item_quantity,
-    //         item_unit_price,
-    //         sub_total,
-    //         total_tax,
-    //         total_amount
-    //     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
-    //     [
-    //         transaction.BankTransactionID,
-    //         transaction.BankTransactionID,
-    //         transaction.Status,
-    //         transaction.Contact ? transaction.Contact.ContactID : null,
-    //         transaction.Contact ? transaction.Contact.Name : null,
-    //         parseXeroTimestamp(transaction.Date),
-    //         transaction.BankAccount ? transaction.BankAccount.AccountID : null,
-    //         transaction.BankAccount ? transaction.BankAccount.Code : null,
-    //         transaction.BankAccount ? transaction.BankAccount.Name : null,
-    //         transaction.CurrencyCode,
-    //         transaction.CurrencyRate ? transaction.CurrencyRate : null,
-    //         transaction.Type,
-    //         transaction.LineItems ? transaction.LineItems.LineItemID : null,
-    //         transaction.LineItems ? transaction.LineItems.Description : null,
-    //         transaction.LineItems ? transaction.LineItems.Quantity : null,
-    //         transaction.LineItems ? transaction.LineItems.UnitAmount : null,
-    //         transaction.SubTotal,
-    //         transaction.TotalTax,
-    //         transaction.Total
-    //     ]
-    // );
+    for (const transaction of bankTransactions) {
+      await db.BankTransactions.create({
+        entity_id: transaction.BankTransactionID,
+        transaction_id: transaction.BankTransactionID,
+        transaction_status: transaction.Status,
+        contact_id: transaction.Contact ? transaction.Contact.ContactID : null,
+        contact_name: transaction.Contact ? transaction.Contact.Name : null,
+        transaction_date: parseXeroTimestamp(transaction.Date),
+        bank_account_id: transaction.BankAccount
+          ? transaction.BankAccount.AccountID
+          : null,
+        account_code: transaction.BankAccount
+          ? transaction.BankAccount.Code
+          : null,
+        bank_account_name: transaction.BankAccount
+          ? transaction.BankAccount.Name
+          : null,
+        transaction_currency: transaction.CurrencyCode,
+        currency_rate: transaction.CurrencyRate
+          ? transaction.CurrencyRate
+          : null,
+        transaction_type: transaction.Type,
+        item_ID: transaction.LineItems
+          ? transaction.LineItems.LineItemID
+          : null,
+        item_description: transaction.LineItems
+          ? transaction.LineItems.Description
+          : null,
+        item_quantity: transaction.LineItems
+          ? transaction.LineItems.Quantity
+          : null,
+        item_unit_price: transaction.LineItems
+          ? transaction.LineItems.UnitAmount
+          : null,
+        sub_total: transaction.SubTotal,
+        total_tax: transaction.TotalTax,
+        total_amount: transaction.Total,
+      });
+    }
+    res.send("successful");
+  } catch (error) {
+    console.log(error);
+    res.send("ERROR");
+  }
+});
 
-    // }
+
+app.get("/drop", async (req, res) => {
+  try {
+    await db.BankTransactions.drop();
+    await db.ChartOfAccounts.drop();
+    await db.Assets.drop();
+    await db.AccountTypes.drop();
+    await db.EntityAccountsMap.drop();
+    await db.SystemAccountStandard.drop();
+    await db.Entity.drop();
+    await db.Customer.drop();
 
     res.send("Successful");
   } catch (error) {
     console.log(error);
-    res.status(500).send("Error fetching data from Xero");
   }
 });
 
-db.createDB().then(() => {
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+
+app.get("/", (req, res) => {
+  res.sendFile(__dirname + "/index.html");
+});
+
+// Route to handle the redirect from Xero
+app.get("/callback", async (req, res) => {
+  const authorizationCode = req.query.code;
+
+  try {
+    const response = await axios.post(
+      "https://identity.xero.com/connect/token",
+      {
+        grant_type: "authorization_code",
+        code: authorizationCode,
+        redirect_uri: redirectURL,
+      },
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: "Basic " + btoa(clientID + ":" + clientSecret),
+        },
+      }
+    );
+
+    const idToken = response.data.id_token;
+    ACCESS_TOKEN = response.data.access_token;
+    REFRESH_TOKEN = response.data.refresh_token;
+    // Split the token into its parts
+    const [header, payloadID, signature] = idToken.split(".");
+    const [headerAccess, payloadAccess, signatureAccess] =
+      ACCESS_TOKEN.split(".");
+    // Base64 decode the payload
+    const decodedPayload = atob(payloadID);
+    const decodedPayloadAccess = atob(payloadAccess);
+    // Parse the decoded payload as JSON
+    const payloadData = JSON.parse(decodedPayload);
+    const payloadAccessData = JSON.parse(decodedPayloadAccess);
+
+    console.log("payload: ", payloadData);
+    console.log("payloadAccess: ", payloadAccessData);
+
+    res.json(response.data);
+  } catch (error) {
+    res.status(500).json({ error: error.response.data });
+  }
+});
+
+//Check the tenants u have authorized to access
+app.get("/connection", async (req, res) => {
+  try {
+    const response = await axios.get("https://api.xero.com/connections", {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + ACCESS_TOKEN,
+      },
+    });
+    TENANT_ID = response.data[0].tenantId
+    console.log("response: ", response.data);
+    res.send("success");
+  } catch (error) {
+    console.log(error.message);
+  }
+});
+
+app.get("/refreshToken", async (req, res) => {
+  try {
+    const response = await axios.post(
+      "https://identity.xero.com/connect/token",
+      {
+        grant_type: "refresh_token",
+        refresh_token: REFRESH_TOKEN,
+      },
+      {
+        headers: {
+          Authorization: "Basic " + btoa(clientID + ":" + clientSecret),
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      }
+    );
+
+    ACCESS_TOKEN = response.data.access_token;
+    REFRESH_TOKEN = response.data.refresh_token;
+
+    res.json(response.data);
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+db.test().then(() => {
   app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });
 });
+
+

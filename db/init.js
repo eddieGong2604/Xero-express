@@ -1,116 +1,314 @@
 const { Pool } = require("pg");
-require("dotenv").config();
+POSTGRES_URL="postgres://default:7XCd2GfbWSgD@ep-rough-cloud-a79cocee-pooler.ap-southeast-2.aws.neon.tech:5432/verceldb?sslmode=require"
+const { Sequelize , DataTypes, UUIDV4} = require('sequelize');
+
+const sequelize = new Sequelize('postgres://default:7XCd2GfbWSgD@ep-rough-cloud-a79cocee-pooler.ap-southeast-2.aws.neon.tech:5432/verceldb?sslmode=require') 
+
 
 const pool = new Pool({
-  connectionString: process.env.POSTGRES_URL,
+  connectionString: POSTGRES_URL,
 });
 
-const createDB = async () => {
-  try {
-    await pool.query(`
-    CREATE TABLE IF NOT EXISTS Customer (
-      customer_id UUID , 
-      name VARCHAR(255) NOT NULL
-    );
-    
-    CREATE TABLE IF NOT EXISTS Entity (
-      entity_id UUID ,
-      name VARCHAR(255) NOT NULL, 
-      customer_id UUID 
-    );
-    
-    CREATE TABLE IF NOT EXISTS Assets (
-      entity_id UUID ,
-      asset_id UUID ,
-      name VARCHAR(255) NOT NULL,
-      asset_number VARCHAR(255), 
-      purchase_date TIMESTAMPTZ, 
-      purchase_price NUMERIC(18, 2),
-      disposal_price NUMERIC(18, 2),
-      asset_status VARCHAR(50),
-      depreciation_calculation_method VARCHAR(50),
-      depreciation_method VARCHAR(50),
-      average_method VARCHAR(50),
-      depreciation_rate DECIMAL(10,2), 
-      effective_life_years NUMERIC(10,2),
-      current_capital_gain NUMERIC(18,2), 
-      current_capital_lost NUMERIC(18,2), 
-      depreciation_start_date TIMESTAMPTZ, 
-      cost_limits NUMERIC(18,2), 
-      asset_residual_value NUMERIC(18,2), 
-      prior_accum_depreciation_amount NUMERIC(18,2), 
-      current_accum_depreciation_amount NUMERIC(18,2)
-    ); 
-    
-    CREATE TABLE IF NOT EXISTS System_Account_Standard (
-        system_account_code VARCHAR(255) ,
-        system_account_class VARCHAR(50), 
-        system_account_name VARCHAR(50), 
-        system_account_description TEXT
-    );
-    
-    CREATE TABLE IF NOT EXISTS Entity_Accounts_Map (
-      entity_id UUID ,
-      entity_account_code VARCHAR(50),
-      system_account_code VARCHAR(255) 
 
-    );
-    
-      CREATE TABLE IF NOT EXISTS Account_Types (
-        entity_id UUID ,
-        account_type VARCHAR(50) ,
-        account_class_type VARCHAR(50) 
-      );
 
-      CREATE TABLE IF NOT EXISTS Chart_of_accounts (
-        account_id UUID ,
-        entity_id UUID  ,
-        account_type VARCHAR(50) ,
-        account_name VARCHAR(255),
-        account_code VARCHAR(255) UNIQUE, 
-        account_description TEXT,
-        tax_type VARCHAR(50),
-        account_status VARCHAR(50)
-    );
-
-    CREATE TABLE IF NOT EXISTS Bank_Transactions (
-      entity_id UUID ,
-      transaction_id VARCHAR(255) ,
-      transaction_status VARCHAR(50), 
-      contact_id VARCHAR(255), 
-      contact_name VARCHAR(255), 
-      transaction_date TIMESTAMPTZ, 
-    
-      bank_account_id UUID ,
-      bank_account_code VARCHAR(50) NOT NULL,
-      bank_account_name VARCHAR(255) NOT NULL,
-    
-      transaction_currency VARCHAR(50), 
-      currency_rate DECIMAL(10,2),
-      transaction_type VARCHAR(50), 
-    
-    
-      item_ID VARCHAR(255),
-      item_description TEXT, 
-      item_quantity NUMERIC(10,2),
-      item_unit_price DECIMAL(10,2),
-      sub_total DECIMAL(10,2),
-      total_tax DECIMAL(10,2),
-      total_amount DECIMAL(10,2)
-    );
-    `);
-
-    console.log("Creating tables successfully.");
-  } catch (error) {
-    console.error("Error creating tables", error);
+const Customer = sequelize.define('Customer', {
+  customer_id: {
+    type: DataTypes.UUID,
+    defaultValue: UUIDV4,
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING(255),
+    allowNull: false
   }
-};
+});
 
+const Entity = sequelize.define('Entity', {
+  entity_id: {
+    type: DataTypes.UUID,
+    defaultValue: UUIDV4,
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING(255),
+    allowNull: false
+  },
+  customer_id: {
+    type: DataTypes.UUID,
+    allowNull: true
+  }
+});
 
+const EntityAccountsMap = sequelize.define('Entity_Accounts_Map', {
+  entity_id: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
+  entity_account_code: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  system_account_code: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  }
+});
+
+const SystemAccountStandard = sequelize.define('System_Account_Standard', {
+  system_account_code: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  system_account_class: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  system_account_name: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  system_account_description: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  }
+});
+
+const AccountTypes = sequelize.define('Account_Types', {
+  entity_id: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
+  account_type: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  account_class_type: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  }
+});
+
+const Assets = sequelize.define('Assets', {
+  entity_id: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
+  asset_id: {
+    type: DataTypes.UUID,
+    defaultValue: UUIDV4,
+    primaryKey: true
+  },
+  name: {
+    type: DataTypes.STRING(255),
+    allowNull: false
+  },
+  asset_number: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  purchase_date: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  purchase_price: {
+    type: DataTypes.DECIMAL(18, 2),
+    allowNull: true
+  },
+  disposal_price: {
+    type: DataTypes.DECIMAL(18, 2),
+    allowNull: true
+  },
+  asset_status: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  depreciation_calculation_method: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  depreciation_method: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  average_method: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  depreciation_rate: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true
+  },
+  effective_life_years: {
+    type: DataTypes.NUMERIC(10, 2),
+    allowNull: true
+  },
+  current_capital_gain: {
+    type: DataTypes.NUMERIC(18, 2),
+    allowNull: true
+  },
+  current_capital_lost: {
+    type: DataTypes.NUMERIC(18, 2),
+    allowNull: true
+  },
+  depreciation_start_date: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  cost_limits: {
+    type: DataTypes.NUMERIC(18, 2),
+    allowNull: true
+  },
+  asset_residual_value: {
+    type: DataTypes.NUMERIC(18, 2),
+    allowNull: true
+  },
+  prior_accum_depreciation_amount: {
+    type: DataTypes.NUMERIC(18, 2),
+    allowNull: true
+  },
+  current_accum_depreciation_amount: {
+    type: DataTypes.NUMERIC(18, 2),
+    allowNull: true
+  }
+});
+
+const BankTransactions = sequelize.define('Bank_Transactions', {
+  entity_id: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
+  transaction_id: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  transaction_status: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  contact_id: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  contact_name: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  transaction_date: {
+    type: DataTypes.DATE,
+    allowNull: true
+  },
+  bank_account_id: {
+    type: DataTypes.UUID,
+    allowNull: true
+  },
+  account_code: {
+    type: DataTypes.STRING(50),
+    allowNull: false
+  },
+  bank_account_name: {
+    type: DataTypes.STRING(255),
+    allowNull: false
+  },
+  transaction_currency: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  currency_rate: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true
+  },
+  transaction_type: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  item_ID: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  item_description: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  item_quantity: {
+    type: DataTypes.NUMERIC(10, 2),
+    allowNull: true
+  },
+  item_unit_price: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true
+  },
+  sub_total: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true
+  },
+  total_tax: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true
+  },
+  total_amount: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true
+  }
+});
+
+const ChartOfAccounts = sequelize.define('Chart_of_accounts', {
+  account_id: {
+    type: DataTypes.UUID,
+    defaultValue: UUIDV4,
+    primaryKey: true
+  },
+  entity_id: {
+    type: DataTypes.UUID,
+    allowNull: false
+  },
+  account_type: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  account_name: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  account_code: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    unique: true
+  },
+  account_description: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  tax_type: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  account_status: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  }
+});
+
+const test = async () => {
+
+  await sequelize.sync()
+}
+
+const dropDB = async () => {
+  await BankTransactions.drop();
+  await ChartOfAccounts.drop();
+  await Assets.drop();
+  await AccountTypes.drop();
+  await EntityAccountsMap.drop();
+  await SystemAccountStandard.drop();
+  await Entity.drop();
+  await Customer.drop(); 
+}
 
 module.exports = {
   query: (text, params) => pool.query(text, params),
-  createDB
+   test, Customer, Assets, AccountTypes,
+   BankTransactions, ChartOfAccounts, Entity,
+   EntityAccountsMap, SystemAccountStandard
 };
 
 
