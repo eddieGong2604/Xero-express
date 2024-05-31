@@ -15,7 +15,7 @@ const PORT = 3000;
 var ACCESS_TOKEN, REFRESH_TOKEN, ENTITY_ID;
 const clientID = "77AD125B449D41429D6C6FB281770221";
 const clientSecret = "7xSgCmgr8dKtrk88Lz58fsyppPl3eto0ojgPhuzOmR6_EsFB";
-const redirectURL = "http://localhost:3000/callback";
+const redirectURL = "https://miradorinsight.io/callback";
 var user = {};
 const accountTypes = [
   { code: "BANK", name: "Bank account" },
