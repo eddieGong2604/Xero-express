@@ -190,6 +190,7 @@ const getData =  async (req, res) => {
   }
 };
 
+app.get("/hello", async (req, res) => {res.render("hello")})
 app.get("/drop", async (req, res) => {
   try {
     await db.BankTransactions.drop();
