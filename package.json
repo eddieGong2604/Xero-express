@@ -16,6 +16,7 @@
     "dotenv": "^16.4.5",
     "drizzle-orm": "^0.30.10",
     "express": "^4.19.2",
+    "node-cron": "^3.0.3",
     "pg": "^8.11.5",
     "postgresql-client": "^2.11.0",
     "sequelize": "^6.37.3"

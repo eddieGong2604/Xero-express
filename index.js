@@ -3,6 +3,7 @@ const axios = require("axios");
 const bodyParser = require("body-parser");
 const db = require("./db/init");
 const { Sequelize } = require("sequelize");
+const cron = require("node-cron");
 require("dotenv").config();
 
 const sequelize = new Sequelize(
@@ -10,11 +11,35 @@ const sequelize = new Sequelize(
 );
 
 const app = express();
-const PORT = process.env.PORT;
-var ACCESS_TOKEN, REFRESH_TOKEN, TENANT_ID;
+const PORT = 3000;
+var ACCESS_TOKEN, REFRESH_TOKEN, ENTITY_ID;
 const clientID = "77AD125B449D41429D6C6FB281770221";
 const clientSecret = "7xSgCmgr8dKtrk88Lz58fsyppPl3eto0ojgPhuzOmR6_EsFB";
 const redirectURL = "http://localhost:3000/callback";
+var user = {};
+const accountTypes = [
+  { code: "BANK", name: "Bank account" },
+  { code: "CURRENT", name: "Current Asset account" },
+  { code: "CURRLIAB", name: "Current Liability account" },
+  { code: "DEPRECIATN", name: "Depreciation account" },
+  { code: "DIRECTCOSTS", name: "Direct Costs account" },
+  { code: "EQUITY", name: "Equity account" },
+  { code: "EXPENSE", name: "Expense account" },
+  { code: "FIXED", name: "Fixed Asset account" },
+  { code: "INVENTORY", name: "Inventory Asset account" },
+  { code: "LIABILITY", name: "Liability account" },
+  { code: "NONCURRENT", name: "Non-current Asset account" },
+  { code: "OTHERINCOME", name: "Other Income account" },
+  { code: "OVERHEADS", name: "Overhead account" },
+  { code: "PREPAYMENT", name: "Prepayment account" },
+  { code: "REVENUE", name: "Revenue account" },
+  { code: "SALES", name: "Sale account" },
+  { code: "TERMLIAB", name: "Non-current Liability account" },
+];
+
+app.use(bodyParser.urlencoded({ extended: false }));
+app.use(bodyParser.json());
+
 // Function to parse Xero timestamp format into a JavaScript Date object
 function parseXeroTimestamp(xeroTimestamp) {
   // Extract the timestamp value from the Xero format
@@ -24,25 +49,31 @@ function parseXeroTimestamp(xeroTimestamp) {
 
   return new Date(timestamp);
 }
-app.get("/populateData", async (req, res) => {
+const getData =  async (req, res) => {
   try {
-    console.log("ACCESS_TOKEN: ", ACCESS_TOKEN)
-    console.log("TENANT_ID: ", TENANT_ID)
+    console.log("ACCESS_TOKEN: ", ACCESS_TOKEN);
+    console.log("ENTITY_ID: ", ENTITY_ID);
     await sequelize.authenticate();
     const [assetsResponse, accountsResponse, bankTransactionsResponse] =
       await Promise.all([
         axios.get(`https://api.xero.com/assets.xro/1.0/Assets`, {
-          headers: { Authorization: `Bearer ${ACCESS_TOKEN}`,
-                      "Xero-Tenant-Id": TENANT_ID },
+          headers: {
+            Authorization: `Bearer ${ACCESS_TOKEN}`,
+            "Xero-Tenant-Id": ENTITY_ID,
+          },
           params: { status: "DRAFT", pageSize: 100 }, //could be Draft | Registered | Disposed
         }),
         axios.get(`https://api.xero.com/api.xro/2.0/Accounts`, {
-          headers: { Authorization: `Bearer ${ACCESS_TOKEN}`,
-                     "Xero-Tenant-Id": TENANT_ID},
+          headers: {
+            Authorization: `Bearer ${ACCESS_TOKEN}`,
+            "Xero-Tenant-Id": ENTITY_ID,
+          },
         }),
         axios.get(`https://api.xero.com/api.xro/2.0/BankTransactions`, {
-          headers: { Authorization: `Bearer ${ACCESS_TOKEN}`, 
-                    "Xero-Tenant-Id": TENANT_ID },
+          headers: {
+            Authorization: `Bearer ${ACCESS_TOKEN}`,
+            "Xero-Tenant-Id": ENTITY_ID,
+          },
         }),
       ]);
     await sequelize.authenticate();
@@ -52,8 +83,8 @@ app.get("/populateData", async (req, res) => {
     const bankTransactions = bankTransactionsResponse.data.BankTransactions;
 
     for (const item of assets) {
-      await db.Assets.create({
-        entity_id: item.assetId,
+      await db.Assets.upsert({
+        entity_id: ENTITY_ID,
         asset_id: item.assetId,
         name: item.assetName,
         asset_number: item.assetNumber,
@@ -101,9 +132,9 @@ app.get("/populateData", async (req, res) => {
     }
 
     for (const account of accounts) {
-      await db.ChartOfAccounts.create({
+      await db.ChartOfAccounts.upsert({
         account_id: account.AccountID,
-        entity_id: account.AccountID,
+        entity_id: ENTITY_ID,
         account_type: account.Type,
         account_name: account.Name,
         account_code: account.Code,
@@ -114,8 +145,8 @@ app.get("/populateData", async (req, res) => {
     }
 
     for (const transaction of bankTransactions) {
-      await db.BankTransactions.create({
-        entity_id: transaction.BankTransactionID,
+      await db.BankTransactions.upsert({
+        entity_id: ENTITY_ID,
         transaction_id: transaction.BankTransactionID,
         transaction_status: transaction.Status,
         contact_id: transaction.Contact ? transaction.Contact.ContactID : null,
@@ -152,13 +183,12 @@ app.get("/populateData", async (req, res) => {
         total_amount: transaction.Total,
       });
     }
-    res.send("successful");
+    // res.send("successful");
   } catch (error) {
     console.log(error);
     res.send("ERROR");
   }
-});
-
+};
 
 app.get("/drop", async (req, res) => {
   try {
@@ -176,9 +206,6 @@ app.get("/drop", async (req, res) => {
     console.log(error);
   }
 });
-
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
 
 app.get("/", (req, res) => {
   res.sendFile(__dirname + "/index.html");
@@ -207,6 +234,8 @@ app.get("/callback", async (req, res) => {
     const idToken = response.data.id_token;
     ACCESS_TOKEN = response.data.access_token;
     REFRESH_TOKEN = response.data.refresh_token;
+    console.warn("ACCESS TOKE AT FIRST: ",ACCESS_TOKEN)
+    console.warn("REFRESH TOKE AT FIRST:  ",REFRESH_TOKEN);
     // Split the token into its parts
     const [header, payloadID, signature] = idToken.split(".");
     const [headerAccess, payloadAccess, signatureAccess] =
@@ -221,14 +250,20 @@ app.get("/callback", async (req, res) => {
     console.log("payload: ", payloadData);
     console.log("payloadAccess: ", payloadAccessData);
 
+    user.customer_id = payloadData.xero_userid;
+    user.customer_name = payloadData.name;
+
+    jobGetRefreshToken.start();
+    getConnection()
+    jobGetData.start()
     res.json(response.data);
   } catch (error) {
-    res.status(500).json({ error: error.response.data });
+    res.status(500).json({ error: error.response });
   }
 });
 
 //Check the tenants u have authorized to access
-app.get("/connection", async (req, res) => {
+const getConnection =  async (req, res) => {
   try {
     const response = await axios.get("https://api.xero.com/connections", {
       headers: {
@@ -236,15 +271,45 @@ app.get("/connection", async (req, res) => {
         Authorization: "Bearer " + ACCESS_TOKEN,
       },
     });
-    TENANT_ID = response.data[0].tenantId
+    console.log(
+      "customer_id: ",
+      user.customer_id,
+      "\ncustomer_name: ",
+      user.customer_name
+    );
+    await db.Customer.upsert({
+      customer_id: user.customer_id,
+      name: user.customer_name,
+    });
+
+    for (tenant of response.data) {
+      await db.Entity.upsert({
+        entity_id: tenant.tenantId,
+        name: tenant.tenantName,
+        customer_id: user.customer_id,
+      });
+
+      for (account of accountTypes) {
+        await db.AccountTypes.findOrCreate({
+          where: { account_type: account.code },
+          defaults: {
+            entity_id: tenant.tenantId,
+            account_class_type: null, // change this later
+          },
+        });
+      }
+    }
+
+    //Choose Demo Company data for populating
+    ENTITY_ID = response.data[0].tenantId;
     console.log("response: ", response.data);
-    res.send("success");
+    // res.send("success");
   } catch (error) {
     console.log(error.message);
   }
-});
+};
 
-app.get("/refreshToken", async (req, res) => {
+const getRefreshToken = async (req, res) => {
   try {
     const response = await axios.post(
       "https://identity.xero.com/connect/token",
@@ -262,12 +327,19 @@ app.get("/refreshToken", async (req, res) => {
 
     ACCESS_TOKEN = response.data.access_token;
     REFRESH_TOKEN = response.data.refresh_token;
-
-    res.json(response.data);
+    console.warn("ACCESS TOKE after refresh: ",ACCESS_TOKEN)
+    console.warn("REFRESH TOKE after refresh:  ",REFRESH_TOKEN);
+    // res.json(response.data);
   } catch (error) {
     console.log(error);
   }
-});
+};
+
+// 30s for development, will be 1 day in production
+const jobGetData = cron.schedule('*/30 * * * * *', getData, {scheduled:false})
+
+// 10s for development, will be 30min day in production
+const jobGetRefreshToken = cron.schedule('*/10 * * * * *', getRefreshToken, {scheduled:false})
 
 db.test().then(() => {
   app.listen(PORT, () => {
@@ -275,4 +347,11 @@ db.test().then(() => {
   });
 });
 
+// db.dropDB();
+// app.listen(PORT, () => {
+//   console.log(`Server is running on port ${PORT}`);
+//   cron.schedule('*/30 * * * * *', () => {
+//     console.log('Cron job is running...');
 
+//   })
+// });

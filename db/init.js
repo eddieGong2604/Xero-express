@@ -35,29 +35,19 @@ const Entity = sequelize.define('Entity', {
   },
   customer_id: {
     type: DataTypes.UUID,
-    allowNull: true
-  }
-});
-
-const EntityAccountsMap = sequelize.define('Entity_Accounts_Map', {
-  entity_id: {
-    type: DataTypes.UUID,
-    allowNull: false
-  },
-  entity_account_code: {
-    type: DataTypes.STRING(50),
-    allowNull: true
-  },
-  system_account_code: {
-    type: DataTypes.STRING(255),
-    allowNull: true
+    allowNull: true,
+    references: {
+      model: Customer, 
+      key: 'customer_id'
+    }
   }
 });
 
 const SystemAccountStandard = sequelize.define('System_Account_Standard', {
   system_account_code: {
     type: DataTypes.STRING(255),
-    allowNull: true
+    allowNull: true, 
+    primaryKey: true
   },
   system_account_class: {
     type: DataTypes.STRING(50),
@@ -73,14 +63,44 @@ const SystemAccountStandard = sequelize.define('System_Account_Standard', {
   }
 });
 
+const EntityAccountsMap = sequelize.define('Entity_Accounts_Map', {
+  entity_id: {
+    type: DataTypes.UUID,
+    allowNull: false, 
+    primaryKey: true,
+    // references: {
+    //   model: Entity,
+    //   key: 'entity_id'
+    // }, 
+    // unique: true
+  },
+  entity_account_code: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    primaryKey: true
+  },
+  system_account_code: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    references: {
+      model: SystemAccountStandard,
+      key: 'system_account_code'
+    }
+  }
+});
+
+
+
 const AccountTypes = sequelize.define('Account_Types', {
   entity_id: {
     type: DataTypes.UUID,
-    allowNull: false
+    allowNull: false, 
+
   },
   account_type: {
     type: DataTypes.STRING(50),
-    allowNull: true
+    allowNull: true,
+    primaryKey: true
   },
   account_class_type: {
     type: DataTypes.STRING(50),
@@ -91,7 +111,11 @@ const AccountTypes = sequelize.define('Account_Types', {
 const Assets = sequelize.define('Assets', {
   entity_id: {
     type: DataTypes.UUID,
-    allowNull: false
+    allowNull: false,
+    references: {
+      model: Entity,
+      key: 'entity_id'
+    }
   },
   asset_id: {
     type: DataTypes.UUID,
@@ -172,14 +196,65 @@ const Assets = sequelize.define('Assets', {
   }
 });
 
+const ChartOfAccounts = sequelize.define('Chart_of_accounts', {
+  account_id: {
+    type: DataTypes.UUID,
+    defaultValue: UUIDV4,
+    primaryKey: true
+  },
+  entity_id: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    // references: {
+    //   model: EntityAccountsMap,
+    //   key: 'entity_id'
+    // }
+    // unique: true
+  },
+  account_type: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    references: {
+      model: AccountTypes,
+      key: 'account_type'
+    }
+  },
+  account_name: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  account_code: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    unique: true
+  },
+  account_description: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  tax_type: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  },
+  account_status: {
+    type: DataTypes.STRING(50),
+    allowNull: true
+  }
+});
+
 const BankTransactions = sequelize.define('Bank_Transactions', {
   entity_id: {
     type: DataTypes.UUID,
-    allowNull: false
+    allowNull: false,
+    // references: {
+    //   model: ChartOfAccounts,
+    //   key: 'entity_id'
+    // }
   },
   transaction_id: {
     type: DataTypes.STRING(255),
-    allowNull: true
+    allowNull: true, 
+    primaryKey: true
   },
   transaction_status: {
     type: DataTypes.STRING(50),
@@ -203,7 +278,11 @@ const BankTransactions = sequelize.define('Bank_Transactions', {
   },
   account_code: {
     type: DataTypes.STRING(50),
-    allowNull: false
+    allowNull: false,
+    references: {
+      model: ChartOfAccounts,
+      key: 'account_code'
+    }
   },
   bank_account_name: {
     type: DataTypes.STRING(255),
@@ -251,42 +330,7 @@ const BankTransactions = sequelize.define('Bank_Transactions', {
   }
 });
 
-const ChartOfAccounts = sequelize.define('Chart_of_accounts', {
-  account_id: {
-    type: DataTypes.UUID,
-    defaultValue: UUIDV4,
-    primaryKey: true
-  },
-  entity_id: {
-    type: DataTypes.UUID,
-    allowNull: false
-  },
-  account_type: {
-    type: DataTypes.STRING(50),
-    allowNull: true
-  },
-  account_name: {
-    type: DataTypes.STRING(255),
-    allowNull: true
-  },
-  account_code: {
-    type: DataTypes.STRING(255),
-    allowNull: true,
-    unique: true
-  },
-  account_description: {
-    type: DataTypes.TEXT,
-    allowNull: true
-  },
-  tax_type: {
-    type: DataTypes.STRING(50),
-    allowNull: true
-  },
-  account_status: {
-    type: DataTypes.STRING(50),
-    allowNull: true
-  }
-});
+
 
 const test = async () => {
 
@@ -306,7 +350,7 @@ const dropDB = async () => {
 
 module.exports = {
   query: (text, params) => pool.query(text, params),
-   test, Customer, Assets, AccountTypes,
+   test,dropDB, Customer, Assets, AccountTypes,
    BankTransactions, ChartOfAccounts, Entity,
    EntityAccountsMap, SystemAccountStandard
 };
